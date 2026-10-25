@@ -41,14 +41,10 @@
       try {
         const h = await MCNet.health();
         if (!h || !h.ok) { this.reason = '服务器不可用'; return; }
-        try {
-          const me = await MCNet.me();
-          this.device = me.device;
-        } catch (e) {
-          if (e.status !== 401) throw e;
-          const r = await MCNet.bootstrapDevice(ensureClientKey());
-          this.device = r.device;
-        }
+        // Bootstrap first: the clientKey identifies this device, and the server
+        // rotates the cookie token. Avoids a noisy 401 from /me on first visit.
+        const r = await MCNet.bootstrapDevice(ensureClientKey());
+        this.device = r.device;
         this.online = true;
         this.mode = 'remote';
       } catch (e) {
