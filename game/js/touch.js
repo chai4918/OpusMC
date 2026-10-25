@@ -51,6 +51,10 @@ var TOUCH_CSS = `
 #touchui:not(.creative) .only-creative { display: none !important; }
 /* right-click mode only makes sense inside an item container */
 #touchui.container #talt { display: flex; }
+/* close button for screens that have no in-panel "done" widget (inventory/chest/furnace/creative, chat) */
+#touchui.container #tclose, #touchui.chat #tclose { display: flex; }
+#touchui #tclose { right: var(--sr); top: var(--st); }
+#touchui #tclose .ico { font-size: calc(var(--tb) * .30); }
 /* never let the top bar cover an open GUI (chat box, titles, slots) */
 #touchui.screen #trow { display: none !important; }
 
@@ -115,6 +119,7 @@ function bindTouch(g) {
         '✈|创造模式飞行开关',
         '👁|切换第一 / 第三人称视角',
         'Ⅱ / ☰|游戏菜单 / 物品栏',
+        '✕|关闭物品栏 / 箱子 / 熔炉等界面',
         '（聊天功能暂未开放）',
         '点击物品栏底部|切换快捷栏格子',
         '打开界面时|点击 = 左键，「右」按钮切换右键',
@@ -133,6 +138,7 @@ function bindTouch(g) {
   root.innerHTML = `
     <div id="tstick"><div id="tknob"></div></div>
     <div class="tb small" id="talt"><span class="ico">右</span></div>
+    <div class="tb small" id="tclose"><span class="ico">✕</span></div>
     <div class="tb big only-play-noscreen" id="tjump"><span class="ico">▲</span></div>
     <div class="tb only-play-noscreen" id="tmine"><span class="ico">⛏</span></div>
     <div class="tb only-play-noscreen" id="tuse"><span class="ico">▣</span></div>
@@ -150,7 +156,7 @@ function bindTouch(g) {
 
   if (!TOUCH_CHAT) { const chat = $('#tchat'); if (chat) chat.remove(); }
   const LABELS = {
-    talt: '右键模式', tjump: '跳跃', tmine: '挖掘 / 攻击', tuse: '放置 / 使用', tsneak: '潜行',
+    talt: '右键模式', tclose: '关闭界面', tjump: '跳跃', tmine: '挖掘 / 攻击', tuse: '放置 / 使用', tsneak: '潜行',
     tsprint: '疾跑', tpause: '游戏菜单', tinv: '物品栏', tcam: '切换视角', tfly: '创造飞行',
   };
   root.querySelectorAll('.tb').forEach((el) => {
@@ -176,16 +182,18 @@ function bindTouch(g) {
   }
 
   // ---- UI state classes -----------------------------------------------------
-  let wasScreen = null, wasPlay = null, wasCreative = null, wasContainer = null;
+  let wasScreen = null, wasPlay = null, wasCreative = null, wasContainer = null, wasChat = null;
   const syncState = () => {
     const isScreen = !!ui.screen, isPlay = g.state === 'play', isCreative = g.mode === 'creative';
     const isContainer = !!(isScreen && typeof ContainerScreen !== 'undefined' && ui.screen instanceof ContainerScreen);
+    const isChat = !!(isScreen && ui.screen.isChat);
     if (isScreen !== wasScreen) {
       root.classList.toggle('screen', isScreen);
       if (!isScreen) altClick = false; // right-click mode is per-GUI
       wasScreen = isScreen;
     }
     if (isContainer !== wasContainer) { root.classList.toggle('container', isContainer); wasContainer = isContainer; }
+    if (isChat !== wasChat) { root.classList.toggle('chat', isChat); wasChat = isChat; }
     if (isPlay !== wasPlay) { root.classList.toggle('play', isPlay); wasPlay = isPlay; }
     if (isCreative !== wasCreative) { root.classList.toggle('creative', isCreative); wasCreative = isCreative; }
     root.querySelector('#talt').classList.toggle('on', altClick);
@@ -401,6 +409,12 @@ function bindTouch(g) {
     p.flying = !p.flying; p.vel[1] = 0; Sound.click();
   });
   tap($('#talt'), () => { altClick = !altClick; Sound.click(); syncState(); });
+  tap($('#tclose'), () => {
+    if (!ui.screen) return;
+    if (ui.screen.onEsc) ui.screen.onEsc();
+    else ui.close();
+    syncState();
+  });
 
   // make sure a stray touch never scrolls / zooms the page
   document.addEventListener('gesturestart', (e) => e.preventDefault());
