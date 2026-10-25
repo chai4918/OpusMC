@@ -1,0 +1,10 @@
+{
+  "name": "opusmc-server",
+  "private": true,
+  "type": "module",
+  "description": "Standalone authoritative storage server for OpusMC (Node 22, zero dependencies)",
+  "scripts": {
+    "server": "node server/index.js",
+    "test": "node --test server/test/*.test.js"
+  }
+}

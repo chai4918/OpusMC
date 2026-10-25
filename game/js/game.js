@@ -29,7 +29,7 @@ class Game {
     this.tickCount = 0; this.worldTime = 1000; this.fps = 0;
     this.perspective = 0;
     this.weather = 0; this.rainTarget = 0; this.weatherTimer = 12000 + Math.random() * 24000;
-    this.breaking = null; this.useCd = 0; this.attackCd = 0;
+    this.breaking = null; this.useCd = 0; this.attackCd = 0; this.saving = false;
     this.stats = { kills: 0, placed: 0, mined: 0 };
     this.adv = {};
     this.lastTap = {};
@@ -48,7 +48,7 @@ class Game {
     this.ui = new UI(this, document.getElementById('ui'));
     this.particles = new Particles(this);
     this.applySettings();
-    await DB.open();
+    await MCStore.init();
     this.resize();
     window.addEventListener('resize', () => this.resize());
     bindInput(this);
@@ -137,19 +137,18 @@ class Game {
     let seed = parseInt(seedStr, 10);
     if (!seedStr) seed = (Math.random() * 2 ** 31) | 0;
     else if (isNaN(seed) || String(seed) !== seedStr.trim()) seed = hashStr(seedStr);
-    const id = 'w' + Date.now().toString(36);
-    const meta = { id, name: name || '新的世界', seed, mode, flat: !!flat, created: Date.now(), lastPlayed: Date.now(), time: 1000, player: null };
-    await DB.putWorld(meta);
-    return this.loadWorld(id);
+    const meta = { name: name || '新的世界', seed, mode, flat: !!flat, created: Date.now(), lastPlayed: Date.now(), time: 1000, player: null };
+    const saved = await MCStore.createWorld(meta);
+    return this.loadWorld(saved.id);
   }
   async loadWorld(id) {
-    const meta = await DB.getWorld(id);
+    const meta = await MCStore.getWorld(id);
     if (!meta) return;
     this.ui.open(new LoadingScreen(this, '正在载入世界…'));
     this.worldMeta = meta;
     this.setupWorld(meta.seed);
     this.world.flat = !!meta.flat;
-    this.world.savedChunks = await DB.loadChunks(id);
+    this.world.savedChunks = await MCStore.loadChunks(id);
     this.dirtySaved = new Set();
     this.mode = meta.mode;
     this.worldTime = meta.time || 1000;
@@ -181,9 +180,24 @@ class Game {
   }
   async saveWorld(quiet) {
     if (!this.worldMeta || this.state !== 'play') return;
-    const w = this.world, p = this.player, list = [];
-    for (const ch of w.chunks.values()) if (ch.modified) { const rec = encodeChunk(ch); w.savedChunks.set(ckey(ch.cx, ch.cz), rec); list.push([ch.cx, ch.cz, rec]); ch.modified = false; }
-    for (const k of this.dirtySaved) { const rec = w.savedChunks.get(k); if (rec) { const cx = Math.floor(k / 65536) - 32768, cz = (k % 65536) - 32768; list.push([cx, cz, rec]); } }
+    if (this.saving) return;
+    this.saving = true;
+    const w = this.world, p = this.player, list = [], cleared = [];
+    const dirtyKeys = [...this.dirtySaved];
+    for (const ch of w.chunks.values()) if (ch.modified) {
+      const rec = encodeChunk(ch);
+      w.savedChunks.set(ckey(ch.cx, ch.cz), rec);
+      list.push([ch.cx, ch.cz, rec]);
+      cleared.push(ch);
+      ch.modified = false;
+    }
+    for (const k of dirtyKeys) {
+      const rec = w.savedChunks.get(k);
+      if (rec) {
+        const cx = Math.floor(k / 65536) - 32768, cz = (k % 65536) - 32768;
+        list.push([cx, cz, rec]);
+      }
+    }
     this.dirtySaved.clear();
     const m = this.worldMeta;
     m.lastPlayed = Date.now(); m.time = this.worldTime; m.mode = this.mode; m.weather = this.weather; m.rainTarget = this.rainTarget;
@@ -192,10 +206,21 @@ class Game {
     m.blockEntities = Object.fromEntries(this.blockEntities);
     m.mobs = this.entities.filter(e => e instanceof Mob && e.persistent && !e.dead).map(e => ({ type: e.type, pos: [...e.pos], yaw: e.yaw, health: e.health, sheared: e.sheared, wool: e.woolColor, baby: e.baby ? e.growT : 0 }));
     try {
-      await DB.putChunks(m.id, list);
-      await DB.putWorld(m);
-      if (!quiet) this.ui.message('世界已保存', '#AAAAAA');
-    } catch (e) { this.ui.message('保存失败: ' + e.message, '#FF5555'); }
+      const res = await MCStore.saveWorld(m, list);
+      if (res && typeof res.revision === 'number') m.revision = res.revision;
+      if (!quiet) this.ui.message(MCStore.online ? '已保存到服务器' : '世界已保存', '#AAAAAA');
+    } catch (e) {
+      // keep the data for the next autosave instead of silently losing it
+      for (const ch of cleared) ch.modified = true;
+      for (const k of dirtyKeys) this.dirtySaved.add(k);
+      const msg = e && e.code === 'CONFLICT_REVISION'
+        ? '保存冲突：云端存档已被其他窗口更新，请退出世界后重新进入'
+        : '保存失败: ' + (e && e.message || e);
+      if (!quiet) this.ui.message(msg, '#FF5555');
+      console.warn('[save]', e);
+    } finally {
+      this.saving = false;
+    }
   }
   async quitToTitle() {
     await this.saveWorld(true);

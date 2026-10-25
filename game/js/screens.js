@@ -38,6 +38,7 @@ class TitleScreen extends MenuScreen {
     Font.draw(c, 'Minecraft JS 复刻 (使用 26.2 官方材质)', 2, ui.h - 10, '#FFFFFF');
     const t = '非官方作品 · 仅供比赛展示';
     Font.draw(c, t, ui.w - Font.width(t) - 2, ui.h - 10, '#FFFFFF');
+    Font.center(c, MCStore.statusText(), ui.w / 2, ui.h - 22, MCStore.online ? '#55FF55' : '#FFAA55');
   }
 }
 
@@ -55,9 +56,9 @@ class LoadingScreen extends MenuScreen {
 }
 
 class WorldListScreen extends MenuScreen {
-  constructor(game) { super(game, '选择世界'); this.bgDirt = true; this.worlds = null; this.sel = -1; this.scroll = 0; DB.listWorlds().then(w => { this.worlds = w; this.layout(); }); }
+  constructor(game) { super(game, '选择世界 · ' + (MCStore.online ? '云存档' : '本机')); this.bgDirt = true; this.worlds = null; this.sel = -1; this.scroll = 0; MCStore.listWorlds().then(w => { this.worlds = w; this.layout(); }).catch(e => { this.worlds = []; this.error = e.message; this.layout(); }); }
   layout() {
-    const u = this.game.ui, cx = u.w / 2, by = u.h - 52;
+    const u = this.game.ui, cx = u.w / 2, by = u.h - 78;
     const has = this.sel >= 0 && this.worlds && this.worlds[this.sel];
     this.widgets = [
       { x: cx - 154, y: by, w: 150, h: 20, label: '进入选中的世界', enabled: !!has, onClick: () => this.play() },
@@ -65,27 +66,48 @@ class WorldListScreen extends MenuScreen {
       { x: cx - 154, y: by + 24, w: 72, h: 20, label: '删除', enabled: !!has, onClick: () => this.del() },
       { x: cx - 78, y: by + 24, w: 72, h: 20, label: '重命名', enabled: !!has, onClick: () => this.rename() },
       { x: cx + 4, y: by + 24, w: 150, h: 20, label: '取消', onClick: () => this.game.ui.open(new TitleScreen(this.game)) },
+      ...(MCStore.online
+        ? [
+          { x: cx - 154, y: by + 48, w: 150, h: 20, label: '导入本机存档', onClick: () => this.importLocal() },
+          { x: cx + 4, y: by + 48, w: 150, h: 20, label: '切换到本机存档', onClick: () => MCStore.useLocal() },
+        ]
+        : [
+          { x: cx - 154, y: by + 48, w: 308, h: 20, label: '连接服务器存档', onClick: () => MCStore.useServer() },
+        ]),
     ];
     this.listY = 36; this.listH = by - 8 - 36; this.titleY = 16;
   }
   play() { const w = this.worlds[this.sel]; if (w) this.game.loadWorld(w.id); }
+  async importLocal() {
+    this.game.ui.message('正在导入本机存档…', '#FFFF55');
+    try {
+      const n = await MCStore.importLocalWorlds(t => this.game.ui.message(t, '#AAAAAA'));
+      this.game.ui.message(n ? `已导入 ${n} 个世界` : '没有需要导入的世界', '#55FF55');
+      this.worlds = await MCStore.listWorlds();
+      this.sel = -1;
+      this.layout();
+    } catch (e) {
+      this.game.ui.message('导入失败: ' + e.message, '#FF5555');
+    }
+  }
   async del() {
     const w = this.worlds[this.sel]; if (!w) return;
     if (this.confirmDel !== w.id) { this.confirmDel = w.id; this.game.ui.message(`再次点击“删除”以确认删除 “${w.name}”`, '#FF5555'); this.widgets[2].label = '确认删除？'; return; }
-    await DB.deleteWorld(w.id); this.confirmDel = null; this.sel = -1;
-    this.worlds = await DB.listWorlds(); this.layout();
+    await MCStore.deleteWorld(w.id); this.confirmDel = null; this.sel = -1;
+    this.worlds = await MCStore.listWorlds(); this.layout();
   }
   rename() {
     const w = this.worlds[this.sel]; if (!w) return;
     const u = this.game.ui, cx = u.w / 2;
-    u.showInput(cx - 100, this.listY + 4 + (this.sel - this.scroll) * 36, 200, 14, w.name, async (v) => { w.name = v.trim() || w.name; await DB.putWorld(w); u.hideInput(); });
+    u.showInput(cx - 100, this.listY + 4 + (this.sel - this.scroll) * 36, 200, 14, w.name, async (v) => { w.name = v.trim() || w.name; await MCStore.renameWorld(w.id, w.name); u.hideInput(); });
   }
   drawExtra(ui) {
     const c = ui.ctx, cx = ui.w / 2;
     c.fillStyle = 'rgba(0,0,0,0.5)'; c.fillRect(0, this.listY, ui.w, this.listH);
-    if (DB.backend === 'memory') Font.center(c, '注意：当前浏览器禁止本地存储，存档在关闭页面后会丢失', cx, this.listY + this.listH + 2 - 12, '#FF5555');
+    if (!MCStore.online && DB.backend === 'memory') Font.center(c, '注意：当前浏览器禁止本地存储，存档在关闭页面后会丢失', cx, this.listY + this.listH + 2 - 12, '#FF5555');
+    if (this.error) Font.center(c, '加载失败: ' + this.error, cx, this.listY + 20, '#FF5555');
     if (!this.worlds) { Font.center(c, '载入中…', cx, this.listY + 20, '#AAAAAA'); return; }
-    if (!this.worlds.length) Font.center(c, '还没有世界，点击“创建新的世界”开始吧！', cx, this.listY + 20, '#AAAAAA');
+    if (!this.worlds.length) Font.center(c, MCStore.online ? '服务器上还没有世界，点击“创建新的世界”或“导入本机存档”' : '还没有世界，点击“创建新的世界”开始吧！', cx, this.listY + 20, '#AAAAAA');
     const vis = Math.floor(this.listH / 36);
     this.worlds.slice(this.scroll, this.scroll + vis).forEach((w, i) => {
       const y = this.listY + 4 + i * 36, x = cx - 110, idx = i + this.scroll;

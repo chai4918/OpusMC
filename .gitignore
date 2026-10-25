@@ -20,6 +20,9 @@ opencode.json.backup.*
 # CodeGraph local index database
 .codegraph/
 
+# Cloud save server data (SQLite + backups)
+data/
+
 .aoci/
 aoci*
 

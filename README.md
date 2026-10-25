@@ -24,6 +24,22 @@ git clone https://github.com/chai4918/OpusMC.git
 > 若个别浏览器在 `file://` 下禁止本地存储，可改用 `启动游戏(本地服务器模式).bat`，它会在
 > `http://localhost:8765/` 启动一个无缓存的本地静态服务器（同时可供局域网设备访问）。
 
+### 云存档服务器（服务端权威存储，可选）
+
+需要 **Node.js 22+**，零第三方依赖。双击 `启动服务器(云存档).bat`（或运行 `npm run server`），
+然后打开 `http://localhost:8788/`；iPad 用 `http://<电脑局域网 IP>:8788/`。
+
+- 世界与区块保存在 `data/mcjs.db`（SQLite），服务端是唯一权威副本
+- 保存采用 **分片 stage + 原子 commit**，带 revision 冲突保护
+- 标题界面会显示「云存档已连接 / 本机存档」
+- 世界列表可「导入本机存档」或「切换到本机存档」；`?local=1` / `localStorage['mcjs-force-local']` 可强制本机模式
+- 数据目录可用 `MC_DATA_DIR` 指定，端口用 `MC_PORT`（默认 8788）
+- 每 6 小时与按 `Ctrl+C` 退出时自动备份到 `data/backup/`（保留 7 份）
+- 测试：`npm test`
+
+> 当前版本**没有账号与鉴权**，只适合可信局域网。不要直接把端口暴露到公网；
+> 公网部署必须放在 HTTPS 反向代理之后，并等待账号/角色功能上线。
+
 ## 操作说明
 
 | 按键 | 功能 |
@@ -232,10 +248,14 @@ git clone https://github.com/chai4918/OpusMC.git
 ```
 启动游戏.bat                    双击启动
 启动游戏(本地服务器模式).bat     备用启动（需要 Python）
+启动服务器(云存档).bat          服务端权威存档服务器（需要 Node.js 22+）
 game/index.html                 游戏入口
 game/js/assets.js               由官方材质打包生成的贴图数据
 game/js/touch.js                触屏控制层（摇杆、按钮、界面点击转发）
+game/js/net/                    云存档客户端（HTTP API、Store、离线回退）
 game/js/*.js                    游戏源码（世界生成、渲染、实体、界面、存档…）
+server/                         云存档服务器（Node 22，零依赖，SQLite）
+data/                           服务端数据库与备份（不提交）
 tools/build_assets.py           从 26.2.jar 提取并打包材质的脚本
 tools/serve.py                  无缓存本地服务器
 ```
