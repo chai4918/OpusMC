@@ -8,7 +8,7 @@ export const config = {
   gameDir: path.join(root, 'game'),
   dataDir: process.env.MC_DATA_DIR || path.join(root, 'data'),
   host: process.env.MC_HOST || '0.0.0.0',
-  port: Number(process.env.MC_PORT || 8788),
+  port: Number(process.env.MC_PORT || 8765),
   // limits
   maxBodyBytes: 8 * 1024 * 1024,
   maxChunkBatch: 64,

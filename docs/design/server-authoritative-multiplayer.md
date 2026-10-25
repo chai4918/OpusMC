@@ -75,8 +75,8 @@
 
 **端口**
 
-- 在线多人：Node `http://0.0.0.0:8788`
-- 离线静态：`tools/serve.py` 保持 `8765`（file:// 亦可）
+- 在线多人/云存档：Node `http://0.0.0.0:8765`（与离线静态服务器端口相同，二者不可同时运行）
+- 离线静态：`tools/serve.py` 默认 `8765`（如需与 Node 同时运行，可 `python tools/serve.py 8766`）
 
 ---
 
@@ -535,7 +535,7 @@ CREATE INDEX idx_audit_at ON audit(at);
 
 | ID | 任务 | 关键产出 | 验收 |
 |---|---|---|---|
-| T0 | 服务骨架 | `server/index.js`、静态、health、启动脚本 | 8788 可访问；health 返回版本 |
+| T0 | 服务骨架 | `server/index.js`、静态、health、启动脚本 | 8765 可访问；health 返回版本 |
 | T1 | DB + 迁移 + 编解码 | `db.js`、`chunk-codec.js`、`001.sql` | 往返一致、迁移/回滚测试 |
 | T2 | 认证 | 注册/登录/登出/me、scrypt 信号量、会话、CSRF、限速 | 安全用例全绿 |
 | T3 | 角色 | CRUD、唯一名、数量上限 | 重名/越权/长度测试 |

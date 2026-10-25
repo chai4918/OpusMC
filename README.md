@@ -27,13 +27,13 @@ git clone https://github.com/chai4918/OpusMC.git
 ### 云存档服务器（服务端权威存储，可选）
 
 需要 **Node.js 22+**，零第三方依赖。双击 `启动服务器(云存档).bat`（或运行 `npm run server`），
-然后打开 `http://localhost:8788/`；iPad 用 `http://<电脑局域网 IP>:8788/`。
+然后打开 `http://localhost:8765/`；iPad 用 `http://<电脑局域网 IP>:8765/`。
 
 - 世界与区块保存在 `data/mcjs.db`（SQLite），服务端是唯一权威副本
 - 保存采用 **分片 stage + 原子 commit**，带 revision 冲突保护
 - 标题界面会显示「云存档已连接 / 本机存档」
 - 世界列表可「导入本机存档」或「切换到本机存档」；`?local=1` / `localStorage['mcjs-force-local']` 可强制本机模式
-- 数据目录可用 `MC_DATA_DIR` 指定，端口用 `MC_PORT`（默认 8788）
+- 数据目录可用 `MC_DATA_DIR` 指定，端口用 `MC_PORT`（默认 8765，与本地静态服务器相同，二者不要同时启动）
 - 每 6 小时与按 `Ctrl+C` 退出时自动备份到 `data/backup/`（保留 7 份）
 - 测试：`npm test`
 
