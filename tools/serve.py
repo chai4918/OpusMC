@@ -9,5 +9,7 @@ class H(http.server.SimpleHTTPRequestHandler):
         pass
 
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'game'))
+host = sys.argv[2] if len(sys.argv) > 2 else '0.0.0.0'
 port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
-http.server.ThreadingHTTPServer(('127.0.0.1', port), H).serve_forever()
+print('serving on http://%s:%d/' % (host, port), flush=True)
+http.server.ThreadingHTTPServer((host, port), H).serve_forever()

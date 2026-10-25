@@ -273,7 +273,8 @@ class UI {
     this.drawToasts();
     if (this.debug) this.drawDebug();
     if (g.sleepFade > 0) { c.fillStyle = `rgba(10,10,20,${g.sleepFade})`; c.fillRect(0, 0, W, H); }
-    if (!this.screen && g.state === 'play' && document.pointerLockElement !== g.canvas && !g.debugPause) {
+    if (!this.screen && g.state === 'play' && document.pointerLockElement !== g.canvas && !g.debugPause
+      && !(typeof TOUCH_MODE !== 'undefined' && TOUCH_MODE.active)) {
       c.fillStyle = 'rgba(0,0,0,0.45)'; c.fillRect(0, H / 2 - 24, W, 20);
       Font.center(c, '点击屏幕继续游戏', W / 2, H / 2 - 18, '#FFFFFF');
     }

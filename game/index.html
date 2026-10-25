@@ -2,11 +2,16 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#000000">
 <title>Minecraft JS 复刻版</title>
 <style>
-  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
-  canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000;
+    touch-action: none; overscroll-behavior: none; -webkit-text-size-adjust: 100%; -webkit-user-select: none; user-select: none; }
+  canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; touch-action: none; }
   #ui { pointer-events: none; }
   #textinput { position: absolute; display: none; background: transparent; border: none; outline: none; color: #fff;
     font-family: "Microsoft YaHei", "PingFang SC", sans-serif; padding: 0 2px; text-shadow: 2px 2px 0 #3f3f3f; z-index: 5; }
@@ -32,6 +37,7 @@
 <script src="js/save.js"></script>
 <script src="js/game.js"></script>
 <script src="js/screens.js"></script>
+<script src="js/touch.js"></script>
 <script src="js/main.js"></script>
 <script>
   // hide boot splash once the title screen is up

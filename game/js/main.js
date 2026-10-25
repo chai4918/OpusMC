@@ -9,6 +9,9 @@ function bindInput(g) {
     if (document.activeElement === ui.input) return;
     Sound.init();
     const code = e.code;
+    // chat is temporarily disabled on touch devices (TOUCH_CHAT in touch.js)
+    if (typeof TOUCH_MODE !== 'undefined' && TOUCH_MODE.active && typeof TOUCH_CHAT !== 'undefined' && !TOUCH_CHAT
+      && (code === 'KeyT' || code === 'Slash')) { e.preventDefault(); return; }
     if (['Space', 'Tab', 'F1', 'F3', 'F5', 'Slash', 'KeyQ'].includes(code) || (e.ctrlKey && ['KeyS', 'KeyD', 'KeyW', 'KeyA'].includes(code))) e.preventDefault();
     if (ui.screen) {
       if (ui.key(e)) return;
@@ -87,6 +90,7 @@ function bindInput(g) {
     if (g.state === 'play') { g.saveWorld(true); e.preventDefault(); e.returnValue = ''; }
   });
   document.addEventListener('visibilitychange', () => { if (document.hidden && g.state === 'play') g.saveWorld(true); });
+  if (typeof TOUCH_MODE !== 'undefined' && TOUCH_MODE.active) bindTouch(g);
 }
 
 // Player preview for the survival inventory

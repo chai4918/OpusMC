@@ -415,9 +415,10 @@ class Game {
     Sound.listener = { x: p.pos[0], y: p.pos[1] + 1.6, z: p.pos[2], yaw: p.yaw };
   }
   readInput() {
-    const k = this.keys;
+    const k = this.keys, t = this.touchMove;
     return {
-      fwd: (k.KeyW ? 1 : 0) - (k.KeyS ? 1 : 0), strafe: (k.KeyD ? 1 : 0) - (k.KeyA ? 1 : 0),
+      fwd: (t && t.fwd) || ((k.KeyW ? 1 : 0) - (k.KeyS ? 1 : 0)),
+      strafe: (t && t.strafe) || ((k.KeyD ? 1 : 0) - (k.KeyA ? 1 : 0)),
       jump: !!k.Space, sneak: !!(k.ShiftLeft || k.ShiftRight), sprint: !!(k.ControlLeft || this.sprintToggle),
     };
   }
@@ -1738,6 +1739,7 @@ class Game {
   // ---- pointer -------------------------------------------------------------------------------
   capturePointer() {
     if (this.state !== 'play') return;
+    if (typeof TOUCH_MODE !== 'undefined' && TOUCH_MODE.ios) return; // iPadOS has no usable pointer lock
     const c = this.canvas, swallow = (p) => { if (p && p.catch) p.catch(() => { }); };
     try {
       const r = c.requestPointerLock({ unadjustedMovement: true });
