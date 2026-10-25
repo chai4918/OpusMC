@@ -8,6 +8,8 @@
     constructor(game, id, name) {
       this.game = game; this.id = id; this.name = name;
       this.pos = [0, 64, 0]; this.prev = [0, 64, 0];
+      this.from = [0, 64, 0]; this.to = [0, 64, 0];
+      this.t0 = 0; this.dur = 50;
       this.yaw = 0; this.prevYaw = 0; this.pitch = 0;
       this.type = 'player'; this.T = { model: 'steve', scale: 0.9375 };
       this.isRemotePlayer = true;
@@ -16,8 +18,15 @@
       this.limbSwing = 0; this.limbAmt = 0;
       this.lastUpdate = 0; this.swingUntil = 0;
     }
-    ipos(a) {
-      return [lerp(this.prev[0], this.pos[0], a), lerp(this.prev[1], this.pos[1], a), lerp(this.prev[2], this.pos[2], a)];
+    ipos() {
+      // Time-based interpolation over the actual packet interval. Using the
+      // frame alpha here made remote players snap every ~100ms (visible trail).
+      const t = clamp((performance.now() - this.t0) / this.dur, 0, 1);
+      return [
+        lerp(this.from[0], this.to[0], t),
+        lerp(this.from[1], this.to[1], t),
+        lerp(this.from[2], this.to[2], t),
+      ];
     }
     lightAt() {
       const w = this.game.world;
@@ -158,24 +167,29 @@
       if (!rp) {
         rp = new RemotePlayer(this.game, p.id, p.name);
         rp.pos = [p.x, p.y, p.z]; rp.prev = [p.x, p.y, p.z];
+        rp.from = [p.x, p.y, p.z]; rp.to = [p.x, p.y, p.z];
         rp.yaw = p.yaw; rp.prevYaw = p.yaw; rp.pitch = p.pitch;
-        rp.lastUpdate = performance.now();
+        rp.lastUpdate = performance.now(); rp.t0 = rp.lastUpdate; rp.dur = 50;
         this.remotes.set(p.id, rp);
         return;
       }
       const now = performance.now();
-      const dt = Math.max(0.05, (now - (rp.lastUpdate || now)) / 1000);
-      const dist = Math.hypot(p.x - rp.pos[0], p.y - rp.pos[1], p.z - rp.pos[2]);
-      const speed = dist / dt;
+      const interval = now - (rp.lastUpdate || now);
+      const dist = Math.hypot(p.x - rp.to[0], p.y - rp.to[1], p.z - rp.to[2]);
+      const speed = dist / Math.max(0.05, interval / 1000);
       rp.limbAmt = lerp(rp.limbAmt, speed > 0.6 ? 1 : 0, 0.35);
       rp.limbSwing += dist * 1.6;
       if (p.flags & 4) rp.swingUntil = now + 300;
-      rp.prev = rp.pos.slice();
-      rp.pos = [p.x, p.y, p.z];
+      rp.from = rp.to.slice();
+      rp.to = [p.x, p.y, p.z];
+      rp.pos = rp.to; rp.prev = rp.from;
       rp.prevYaw = rp.yaw;
       rp.yaw = p.yaw;
       rp.pitch = p.pitch;
       rp.lastUpdate = now;
+      rp.t0 = now;
+      // teleports (respawn/join) should not be smeared across the map
+      rp.dur = dist > 8 ? 0 : clamp(interval * 1.15, 50, 200);
     },
 
     send(obj) {
@@ -185,7 +199,7 @@
     sendPlayer(pos, yaw, pitch, flags = 0) {
       if (!this.active) return;
       const now = performance.now();
-      if (now - this.lastPlayerSent < 90) return;
+      if (now - this.lastPlayerSent < 50) return;
       this.lastPlayerSent = now;
       this.send({ t: 'player', x: pos[0], y: pos[1], z: pos[2], yaw, pitch, flags });
     },
