@@ -472,7 +472,10 @@ class ChatScreen extends MenuScreen {
 
 function runCommand(g, text) {
   const p = g.player, ui = g.ui;
-  if (!text.startsWith('/')) { ui.message('<玩家> ' + text); return; }
+  if (!text.startsWith('/')) {
+    if (typeof MCRealtime !== 'undefined' && MCRealtime.active) { MCRealtime.sendChat(text); return; }
+    ui.message('<玩家> ' + text); return;
+  }
   const [cmd, ...a] = text.slice(1).split(/\s+/);
   const err = (m) => ui.message(m, '#FF5555');
   try {

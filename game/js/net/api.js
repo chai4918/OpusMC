@@ -82,7 +82,7 @@
     lease(id, takeover) { return request('POST', `/worlds/${encodeURIComponent(id)}/lease`, { takeover: !!takeover }); },
     heartbeat(id, token) { return request('POST', `/worlds/${encodeURIComponent(id)}/lease/heartbeat`, { token }); },
     releaseLease(id, token) { return request('POST', `/worlds/${encodeURIComponent(id)}/lease/release`, { token }); },
-    putPlayer(id, data, leaseToken) { return request('PUT', `/worlds/${encodeURIComponent(id)}/player`, { data, leaseToken }); },
+    putPlayer(id, data) { return request('PUT', `/worlds/${encodeURIComponent(id)}/player`, { data }); },
 
     getChunks(id, cursor = 0, limit = 128) {
       return request('GET', `/worlds/${encodeURIComponent(id)}/chunks?cursor=${cursor}&limit=${limit}`);

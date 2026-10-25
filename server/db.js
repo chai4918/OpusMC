@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
+import { packChunk, unpackChunk } from './chunk-codec.js';
 
 const SCHEMA_VERSION = 2;
 
@@ -193,6 +194,8 @@ class Store {
     q.getRevision = db.prepare('SELECT revision, owner_device FROM worlds WHERE id = ? AND deleted_at IS NULL');
     q.getChunkPage = db.prepare('SELECT cx,cz,data FROM chunks WHERE world_id=? ORDER BY cx,cz LIMIT ? OFFSET ?');
     q.getChunk = db.prepare('SELECT cx,cz,data FROM chunks WHERE world_id=? AND cx=? AND cz=?');
+    q.putChunk = db.prepare(`INSERT INTO chunks(world_id,cx,cz,data,updated_at) VALUES (?,?,?,?,?)
+      ON CONFLICT(world_id,cx,cz) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at`);
     q.putStaging = db.prepare(`INSERT INTO save_staging(world_id,save_id,cx,cz,data,created_at) VALUES (?,?,?,?,?,?)
       ON CONFLICT(world_id,save_id,cx,cz) DO UPDATE SET data=excluded.data, created_at=excluded.created_at`);
     q.countStaging = db.prepare('SELECT COUNT(*) AS n FROM save_staging WHERE world_id=? AND save_id=?');
@@ -361,6 +364,44 @@ class Store {
     }
     return rows;
   }
+
+  getChunkRow(id, cx, cz) { return this.q.getChunk.get(id, cx, cz) || null; }
+
+  putChunkData(id, cx, cz, blob) {
+    const now = Date.now();
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const existing = this.q.getChunk.get(id, cx, cz);
+      if (!existing) {
+        this.db.prepare('INSERT INTO chunks(world_id,cx,cz,data,updated_at) VALUES (?,?,?,?,?)').run(id, cx, cz, blob, now);
+      }
+      this.db.exec('COMMIT');
+      return !existing;
+    } catch (e) {
+      this.db.exec('ROLLBACK');
+      throw e;
+    }
+  }
+
+  applyBlock(id, cx, cz, x, y, z, blockId, meta) {
+    const row = this.q.getChunk.get(id, cx, cz);
+    if (!row) return { ok: false, missing: true };
+    if (x < 0 || x > 15 || z < 0 || z > 15 || y < 0 || y > 255) return { ok: false };
+    const { b, m } = unpackChunk(row.data);
+    const blocks = decodePairs(b);
+    const metas = decodePairs(m);
+    const idx = (y << 8) | (z << 4) | x;
+    blocks[idx] = blockId & 0xff;
+    metas[idx] = meta & 0xff;
+    const data = packChunk({ b: encodePairs(blocks), m: encodePairs(metas) });
+    this.q.putChunk.run(id, cx, cz, data, Date.now());
+    return { ok: true };
+  }
+
+  updateWorldClock(id, time, weather, rainTarget) {
+    this.db.prepare('UPDATE worlds SET time=?, weather=?, rain_target=?, updated_at=? WHERE id=? AND deleted_at IS NULL')
+      .run(time | 0, weather || 0, rainTarget || 0, Date.now(), id);
+  }
   stageChunks(id, saveId, chunks, now = Date.now()) {
     this.cleanupStaging(now);
     this.db.exec('BEGIN IMMEDIATE');
@@ -449,6 +490,35 @@ function parseWorldRow(row) {
 
 export function cleanName(name) {
   return String(name ?? '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 64);
+}
+
+const CELLS = 16 * 16 * 256;
+
+function decodePairs(buf) {
+  const arr = new Uint8Array(CELLS);
+  let p = 0;
+  for (let i = 0; i < buf.length; i += 4) {
+    const v = buf.readUInt16LE(i), n = buf.readUInt16LE(i + 2);
+    if (p + n > CELLS) break;
+    arr.fill(v, p, p + n);
+    p += n;
+  }
+  return arr;
+}
+
+function encodePairs(arr) {
+  const out = [];
+  let i = 0;
+  while (i < arr.length) {
+    const v = arr[i];
+    let n = 1;
+    while (i + n < arr.length && arr[i + n] === v && n < 65535) n++;
+    out.push(v, n);
+    i += n;
+  }
+  const buf = Buffer.alloc(out.length * 2);
+  for (let k = 0; k < out.length; k++) buf.writeUInt16LE(out[k], k * 2);
+  return buf;
 }
 
 export const __internal = { SCHEMA_VERSION, cleanName };

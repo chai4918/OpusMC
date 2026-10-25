@@ -182,6 +182,7 @@ class Game {
     this.pendingMobs = meta.mobs || [];
     this.state = 'loading';
     this.loadStart = performance.now();
+    if (MCStore.online && typeof MCRealtime !== 'undefined') MCRealtime.join(id, this);
   }
   giveCreativeKit() {
     const inv = this.player.inv;
@@ -242,6 +243,7 @@ class Game {
   }
   async quitToTitle() {
     await this.saveWorld(true);
+    if (typeof MCRealtime !== 'undefined') MCRealtime.leave();
     await MCStore.leaveWorld();
     this.worldMeta = null;
     this.ui.cursor = null;
@@ -403,6 +405,10 @@ class Game {
     }
     if (this.state !== 'play') return;
     this.updateChunks(6);
+    if (typeof MCRealtime !== 'undefined' && MCRealtime.active) {
+      const p = this.player;
+      MCRealtime.sendPlayer(p.pos, p.yaw, p.pitch, (p.sneaking ? 1 : 0) | (p.flying ? 2 : 0));
+    }
     if (now - this.lastSave > 45000) { this.lastSave = now; this.saveWorld(true); }
     Sound.updateMusic(true);
     // mouse look handled in input; continuous mining handled in tick
@@ -416,10 +422,12 @@ class Game {
     if (this.ui.screen && this.ui.screen.pauses) return;
     this.tickCount++;
     this.world.time++;
-    this.worldTime++;
+    if (typeof MCRealtime === 'undefined' || !MCRealtime.active) this.worldTime++;
     const p = this.player;
     // weather
-    if (--this.weatherTimer < 0) { this.rainTarget = this.rainTarget ? 0 : 1; this.weatherTimer = this.rainTarget ? 6000 + Math.random() * 12000 : 12000 + Math.random() * 36000; }
+    if (typeof MCRealtime === 'undefined' || !MCRealtime.active) {
+      if (--this.weatherTimer < 0) { this.rainTarget = this.rainTarget ? 0 : 1; this.weatherTimer = this.rainTarget ? 6000 + Math.random() * 12000 : 12000 + Math.random() * 36000; }
+    }
     this.weather += clamp(this.rainTarget - this.weather, -0.01, 0.01);
     const input = this.ui.screen ? { fwd: 0, strafe: 0, jump: false, sneak: false, sprint: false } : this.readInput();
     if (this.tickSleep()) { }
@@ -1075,6 +1083,7 @@ class Game {
     }
     // water fills in when breaking next to water? (handled by fluid ticks via notify)
     w.setBlock(x, y, z, 0, 0);
+    if (typeof MCRealtime !== 'undefined' && MCRealtime.active) MCRealtime.sendBlock(x, y, z, 0, 0);
     if (id === 35 && w.getBlock(x, y - 1, z) !== 0 && this.mode !== 'creative' && !natural) w.setBlock(x, y, z, WATER, 0);
     if (!natural) this.flushMesh();
   }
@@ -1335,6 +1344,7 @@ class Game {
   placeAt(x, y, z, id, meta, held, merge) {
     const p = this.player, w = this.world;
     w.setBlock(x, y, z, id, meta);
+    if (typeof MCRealtime !== 'undefined' && MCRealtime.active) MCRealtime.sendBlock(x, y, z, id, meta);
     Sound.block('place', BLOCKS[id].sound, [x + 0.5, y + 0.5, z + 0.5]);
     if (this.mode !== 'creative') { held.count--; if (!held.count) p.inv.slots[p.inv.sel] = null; }
     p.swingT = 6;
@@ -1514,6 +1524,7 @@ class Game {
     gl.enable(gl.DEPTH_TEST); gl.enable(gl.CULL_FACE);
     const cam = r.camPos;
     const list = this.entities.slice();
+    if (typeof MCRealtime !== 'undefined') for (const rp of MCRealtime.remotes.values()) list.push(rp);
     if (this.state === 'play' && this.perspective > 0) list.push(this.player);
     for (const e of list) {
       const ip = e.ipos(a);
@@ -1521,7 +1532,7 @@ class Game {
       if (dx * dx + dz * dz > (r.renderDist * 16) ** 2) continue;
       if (!aabbInFrustum(r.planes, ip[0] - 2, ip[1] - 1, ip[2] - 2, ip[0] + 2, ip[1] + 3, ip[2] + 2)) continue;
       const l = e.lightAt();
-      if (e instanceof Mob || e === this.player) this.drawMob(e, ip, a, env, l);
+      if (e instanceof Mob || e === this.player || e.isRemotePlayer) this.drawMob(e, ip, a, env, l);
       else if (e instanceof ItemEntity) {
         const st = e.stack, def = ITEMS[st.id];
         const t = (e.age + a) / 20;
@@ -1555,7 +1566,7 @@ class Game {
   }
   drawMob(e, ip, a, env, l) {
     const r = this.renderer, gl = r.gl;
-    const isPlayer = e === this.player;
+    const isPlayer = e === this.player || e.isRemotePlayer;
     const model = isPlayer ? 'steve' : e.T.model;
     const m = M4.create();
     M4.translate(m, ip[0], ip[1], ip[2]);
@@ -1573,7 +1584,7 @@ class Game {
     const lt = [l[0], l[1]];
     if (e.fire > 0) lt[1] = 1;
     let heldId = null;
-    if (isPlayer && e.inv.held) heldId = e.inv.held.id;
+    if (isPlayer && e.inv && e.inv.held) heldId = e.inv.held.id;
     else if (e.type === 'skeleton') heldId = item('bow');
     const attach = heldId != null ? { rarm: (am) => {
       const def = ITEMS[heldId], b = def.block !== undefined ? BLOCKS[def.block] : null;

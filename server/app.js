@@ -4,11 +4,15 @@ import { config } from './config.js';
 import { openDb } from './db.js';
 import { createApi } from './api.js';
 import { createStaticHandler } from './static.js';
+import { attachWebSocket } from './ws.js';
+import { createRealtime } from './rooms.js';
+import { authenticate } from './auth.js';
 
 export function createApp({ dataDir = config.dataDir, gameDir = config.gameDir } = {}) {
   const store = openDb(dataDir);
   const api = createApi(store);
   const serveStatic = createStaticHandler(gameDir);
+  const realtime = createRealtime(store);
 
   const server = http.createServer((req, res) => {
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
@@ -18,6 +22,7 @@ export function createApp({ dataDir = config.dataDir, gameDir = config.gameDir }
     }
     serveStatic(req, res, url);
   });
+  attachWebSocket(server, { authenticate, store, onConnection: realtime.onConnection });
 
   return {
     server,

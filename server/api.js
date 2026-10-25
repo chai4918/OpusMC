@@ -121,7 +121,6 @@ export function createApi(store) {
         const id = decodeURIComponent(m[1]);
         requireMember(store, id, device.id);
         const body = await readJson(req);
-        requireLease(store, id, device.id, body?.leaseToken);
         const data = body?.data;
         if (!data || typeof data !== 'object') throw new HttpError(400, 'BAD_REQUEST', 'data required');
         if (JSON.stringify(data).length > 256 * 1024) throw new HttpError(413, 'LIMIT_EXCEEDED', 'player state too large');

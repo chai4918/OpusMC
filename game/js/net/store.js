@@ -168,18 +168,12 @@
       if (!this.online) return DB.getWorld(id);
       if (this.lease) await this.leaveWorld();
       const meta = await MCNet.getWorld(id);
-      const lease = await MCNet.lease(id, !!opts.takeover);
-      this._beginLease(id, lease.token);
       meta.player = meta.playerState || null;
       return meta;
     },
 
     async leaveWorld() {
-      const lease = this.lease;
       this._clearLease();
-      if (lease && this.online) {
-        try { await MCNet.releaseLease(lease.worldId, lease.token); } catch { /* expire later */ }
-      }
     },
 
     _requireLease(worldId) {
@@ -215,27 +209,10 @@
         return { revision: meta.revision || 0, savedChunks: chunkList.length };
       }
 
-      const leaseToken = this._requireLease(meta.id);
-      const player = meta.player;
-      const worldMeta = { ...meta };
-      delete worldMeta.player;
-
-      // player state is per device and independent from the world revision
-      if (player) await MCNet.putPlayer(meta.id, player, leaseToken);
-
-      const saveId = MCNet.newSaveId();
-      const BATCH = 64;
-      for (let i = 0; i < chunkList.length; i += BATCH) {
-        await MCNet.stageChunks(meta.id, saveId, chunkList.slice(i, i + BATCH), leaseToken);
-      }
-      try {
-        const res = await MCNet.commit(meta.id, saveId, meta.revision || 0, worldMeta, leaseToken);
-        meta.revision = res.revision;
-        return res;
-      } catch (e) {
-        MCNet.abort(meta.id, saveId).catch(() => { });
-        throw e;
-      }
+      // S1: blocks are authoritative on the server (WebSocket ops); only the
+      // per-device player state is saved from the client.
+      if (meta.player) await MCNet.putPlayer(meta.id, meta.player);
+      return { revision: meta.revision || 0, savedChunks: 0 };
     },
 
     async importLocalWorlds(onProgress) {
