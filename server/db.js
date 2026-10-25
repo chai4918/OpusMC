@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { packChunk, unpackChunk } from './chunk-codec.js';
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const MIGRATION_1 = `
 CREATE TABLE worlds (
@@ -98,6 +98,19 @@ DELETE FROM leases;
 DELETE FROM worlds;
 `;
 
+const MIGRATION_3 = `
+CREATE TABLE block_entities (
+  world_id   TEXT NOT NULL,
+  x          INTEGER NOT NULL,
+  y          INTEGER NOT NULL,
+  z          INTEGER NOT NULL,
+  type       TEXT NOT NULL,
+  data_json  TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (world_id, x, y, z)
+);
+`;
+
 export class ConflictError extends Error {
   constructor(message = 'revision conflict') { super(message); this.name = 'ConflictError'; this.code = 'CONFLICT_REVISION'; }
 }
@@ -153,6 +166,20 @@ export function openDb(dataDir) {
     }
   }
 
+  if (current < 3) {
+    db.exec('BEGIN');
+    try {
+      db.exec(MIGRATION_3);
+      db.prepare('UPDATE schema_meta SET version = 3').run();
+      db.exec('COMMIT');
+      current = 3;
+    } catch (e) {
+      db.exec('ROLLBACK');
+      db.close();
+      throw e;
+    }
+  }
+
   return new Store(db, dataDir);
 }
 
@@ -196,6 +223,10 @@ class Store {
     q.getChunk = db.prepare('SELECT cx,cz,data FROM chunks WHERE world_id=? AND cx=? AND cz=?');
     q.putChunk = db.prepare(`INSERT INTO chunks(world_id,cx,cz,data,updated_at) VALUES (?,?,?,?,?)
       ON CONFLICT(world_id,cx,cz) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at`);
+    q.listBlockEntities = db.prepare('SELECT x,y,z,type,data_json FROM block_entities WHERE world_id=?');
+    q.putBlockEntity = db.prepare(`INSERT INTO block_entities(world_id,x,y,z,type,data_json,updated_at) VALUES (?,?,?,?,?,?,?)
+      ON CONFLICT(world_id,x,y,z) DO UPDATE SET type=excluded.type, data_json=excluded.data_json, updated_at=excluded.updated_at`);
+    q.deleteBlockEntity = db.prepare('DELETE FROM block_entities WHERE world_id=? AND x=? AND y=? AND z=?');
     q.putStaging = db.prepare(`INSERT INTO save_staging(world_id,save_id,cx,cz,data,created_at) VALUES (?,?,?,?,?,?)
       ON CONFLICT(world_id,save_id,cx,cz) DO UPDATE SET data=excluded.data, created_at=excluded.created_at`);
     q.countStaging = db.prepare('SELECT COUNT(*) AS n FROM save_staging WHERE world_id=? AND save_id=?');
@@ -391,11 +422,28 @@ class Store {
     const blocks = decodePairs(b);
     const metas = decodePairs(m);
     const idx = (y << 8) | (z << 4) | x;
+    const previous = blocks[idx];
     blocks[idx] = blockId & 0xff;
     metas[idx] = meta & 0xff;
     const data = packChunk({ b: encodePairs(blocks), m: encodePairs(metas) });
     this.q.putChunk.run(id, cx, cz, data, Date.now());
-    return { ok: true };
+    return { ok: true, previous };
+  }
+
+  listBlockEntities(worldId) {
+    const out = {};
+    for (const r of this.q.listBlockEntities.all(worldId)) {
+      try { out[`${r.x},${r.y},${r.z}`] = { type: r.type, ...JSON.parse(r.data_json) }; } catch { /* skip */ }
+    }
+    return out;
+  }
+
+  putBlockEntity(worldId, x, y, z, type, data) {
+    this.q.putBlockEntity.run(worldId, x, y, z, type, JSON.stringify(data), Date.now());
+  }
+
+  deleteBlockEntity(worldId, x, y, z) {
+    this.q.deleteBlockEntity.run(worldId, x, y, z);
   }
 
   updateWorldClock(id, time, weather, rainTarget) {

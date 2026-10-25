@@ -202,6 +202,12 @@
       return DB.loadChunks(id);
     },
 
+    async loadBlockEntities(id) {
+      if (!this.online) return null;
+      const r = await MCNet.listBlockEntities(id);
+      return r.entities || {};
+    },
+
     async saveWorld(meta, chunkList) {
       if (!this.online) {
         await DB.putChunks(meta.id, chunkList);

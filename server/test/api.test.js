@@ -51,7 +51,7 @@ test('health', async () => {
   const r = await raw('GET', '/api/health');
   assert.equal(r.status, 200);
   assert.equal(r.body.ok, true);
-  assert.equal(r.body.version, 2);
+  assert.equal(r.body.version, 3);
 });
 
 test('device bootstrap: stable identity, first device is admin', async () => {

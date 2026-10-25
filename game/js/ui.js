@@ -739,6 +739,7 @@ class ChestScreen extends ContainerScreen {
     Font.draw(c, '物品栏', this.x + 8, this.y + 74, '#404040', false);
   }
   close() { this.game.markBlockEntity(this.be); Sound.door(this.be.pos, false); }
+  changed() { this.game.markBlockEntity(this.be); }
 }
 
 class FurnaceScreen extends ContainerScreen {
@@ -776,6 +777,7 @@ class FurnaceScreen extends ContainerScreen {
     Font.draw(c, '物品栏', this.x + 8, this.y + 73, '#404040', false);
   }
   close() { this.game.markBlockEntity(this.be); }
+  changed() { this.game.markBlockEntity(this.be); }
 }
 
 class CreativeScreen extends ContainerScreen {

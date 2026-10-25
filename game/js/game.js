@@ -179,6 +179,12 @@ class Game {
       if (this.mode === 'creative') this.giveCreativeKit();
     }
     for (const [k, v] of Object.entries(meta.blockEntities || {})) this.blockEntities.set(k, v);
+    if (MCStore.online) {
+      try {
+        const bes = await MCStore.loadBlockEntities(id);
+        if (bes) this.blockEntities = new Map(Object.entries(bes));
+      } catch (e) { console.warn('[be]', e); }
+    }
     this.pendingMobs = meta.mobs || [];
     this.state = 'loading';
     this.loadStart = performance.now();
@@ -738,7 +744,12 @@ class Game {
       }
     }
   }
-  markBlockEntity() { }
+  markBlockEntity(be) {
+    if (!be || !be.pos) return;
+    if (typeof MCRealtime !== 'undefined' && MCRealtime.active) {
+      MCRealtime.sendBlockEntity(be.pos[0], be.pos[1], be.pos[2], be.type, be);
+    }
+  }
   getBlockEntity(x, y, z, type) {
     const k = `${x},${y},${z}`;
     let be = this.blockEntities.get(k);

@@ -109,6 +109,24 @@
         case 'chat':
           g.ui.message(`${m.name}: ${m.text}`, '#FFFFFF');
           break;
+        case 'be': {
+          const key = `${m.x},${m.y},${m.z}`;
+          const be = { type: m.type, pos: [m.x, m.y, m.z], ...(m.data || {}) };
+          g.blockEntities.set(key, be);
+          const sc = g.ui.screen;
+          if (sc && sc.be && sc.be.pos && sc.be.pos[0] === m.x && sc.be.pos[1] === m.y && sc.be.pos[2] === m.z) {
+            if (m.type === 'chest') sc.be.slots = (m.data && m.data.slots) || new Array(27).fill(null);
+            else Object.assign(sc.be, m.data || {});
+          }
+          break;
+        }
+        case 'be_remove': {
+          const key = `${m.x},${m.y},${m.z}`;
+          g.blockEntities.delete(key);
+          const sc = g.ui.screen;
+          if (sc && sc.be && sc.be.pos && sc.be.pos[0] === m.x && sc.be.pos[1] === m.y && sc.be.pos[2] === m.z) g.ui.close();
+          break;
+        }
         case 'needChunk': {
           const ch = g.world && g.world.getChunk(m.cx, m.cz);
           if (!ch) break;
@@ -159,6 +177,14 @@
     sendChat(text) {
       if (!this.active) return;
       this.send({ t: 'chat', text });
+    },
+
+    sendBlockEntity(x, y, z, type, be) {
+      if (!this.active) return;
+      const data = type === 'chest'
+        ? { slots: be.slots }
+        : { input: be.input, fuel: be.fuel, output: be.output, burn: be.burn, burnMax: be.burnMax, cook: be.cook, xp: be.xp };
+      this.send({ t: 'be', x, y, z, type, data });
     },
 
     leave() {

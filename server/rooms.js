@@ -40,6 +40,9 @@ export function createRealtime(store) {
       } else if (m.t === 'chunk') {
         if (!allow(limits, 'block', 30)) return;
         room.chunk(player, m);
+      } else if (m.t === 'be') {
+        if (!allow(limits, 'block', 30)) return;
+        room.be(player, m);
       } else if (m.t === 'chat') {
         if (!allow(limits, 'chat', 3)) return;
         room.chat(player, m);
@@ -123,6 +126,23 @@ class Room {
       return;
     }
     this.broadcast({ t: 'block', from: entry.deviceId, cx, cz, x, y, z, id, meta }, entry.deviceId);
+    const wx = cx * 16 + x, wz = cz * 16 + z;
+    if (res.previous !== id) {
+      this.store.deleteBlockEntity(this.id, wx, y, wz);
+      this.broadcast({ t: 'be_remove', x: wx, y, z: wz });
+    }
+  }
+
+  be(entry, m) {
+    const x = Number(m.x), y = Number(m.y), z = Number(m.z);
+    if (![x, y, z].every(Number.isInteger)) return;
+    if (m.type !== 'chest' && m.type !== 'furnace') return;
+    if (!m.data || typeof m.data !== 'object') return;
+    if (JSON.stringify(m.data).length > 64 * 1024) return;
+    const dx = (x + 0.5) - entry.x, dy = (y + 0.5) - entry.y, dz = (z + 0.5) - entry.z;
+    if (dx * dx + dy * dy + dz * dz > 100) return;
+    this.store.putBlockEntity(this.id, x, y, z, m.type, m.data);
+    this.broadcast({ t: 'be', x, y, z, type: m.type, data: m.data }, entry.deviceId);
   }
 
   chunk(entry, m) {

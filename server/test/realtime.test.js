@@ -157,6 +157,18 @@ test('S1: presence, block sync, chat and server time', async () => {
   assert.equal(block.id, 3);
   assert.equal(block.cx, 0);
 
+  a.send({ t: 'be', x: 0, y: 64, z: 0, type: 'chest', data: { slots: [{ id: 1, count: 2 }, null] } });
+  const be = await b.waitFor('be');
+  assert.equal(be.type, 'chest');
+  assert.equal(be.data.slots[0].count, 2);
+  const beList = await call('GET', `/api/worlds/${worldId}/block-entities`, undefined, bCookie);
+  assert.equal(beList.body.entities['0,64,0'].slots[0].count, 2);
+
+  a.send({ t: 'block', cx: 0, cz: 0, x: 0, y: 64, z: 0, id: 0, meta: 0 });
+  await b.waitFor('be_remove');
+  const beGone = await call('GET', `/api/worlds/${worldId}/block-entities`, undefined, bCookie);
+  assert.equal(beGone.body.entities['0,64,0'], undefined);
+
   a.send({ t: 'chat', text: 'hello from A' });
   const chat = await b.waitFor('chat');
   assert.equal(chat.name, 'WS-A');

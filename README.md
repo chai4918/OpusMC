@@ -37,6 +37,7 @@ git clone https://github.com/chai4918/OpusMC.git
   - 互相可见（其他玩家以 Steve 模型/位置实时同步）
   - 方块挖掘与放置实时同步，服务端校验距离并落库
   - 服务端统一时间/天气；聊天通过服务器转发
+  - 箱子/熔炉内容通过 WebSocket 同步并持久化（熔炉燃烧进度仍由客户端模拟）
   - 断线后自动重连（3 秒）
 - 世界与区块保存在 `data/mcjs.db`（SQLite），服务端是唯一权威副本
 - 世界列表可「导入本机存档」或「切换到本机存档」；`?local=1` / `localStorage['mcjs-force-local']` 可强制本机模式
@@ -44,7 +45,7 @@ git clone https://github.com/chai4918/OpusMC.git
 - 每 6 小时与按 `Ctrl+C` 退出时自动备份到 `data/backup/`（保留 7 份）
 - 测试：`npm test`
 
-> **S1 尚未同步**：怪物/掉落物/箭/TNT 实体、箱子/熔炉内容、门/活板门状态、流体与作物生长。这些属于 S2。
+> **S2 尚未同步**：怪物/掉落物/箭/TNT 实体、流体与作物生长、熔炉服务端 tick。这些属于下一步。
 >
 > ⚠️ 从旧版存储服务器升级时，**设备身份之前的旧世界会被直接删除**（迁移前自动备份 `data/backup/pre-v2-*.db`）。
 >

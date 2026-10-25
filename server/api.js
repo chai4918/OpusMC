@@ -21,7 +21,7 @@ export function createApi(store) {
       const p = url.pathname;
 
       if (p === '/api/health' && req.method === 'GET') {
-        return json(res, 200, { ok: true, version: 2, backend: 'sqlite' });
+        return json(res, 200, { ok: true, version: 3, backend: 'sqlite' });
       }
 
       if (p === '/api/device' && req.method === 'POST') {
@@ -162,6 +162,13 @@ export function createApi(store) {
         const body = await readJson(req);
         if (body?.token) store.deleteLeaseIf(id, device.id, sha256(body.token));
         return json(res, 200, { ok: true });
+      }
+
+      m = p.match(/^\/api\/worlds\/([^/]+)\/block-entities$/);
+      if (m && req.method === 'GET') {
+        const id = decodeURIComponent(m[1]);
+        requireMember(store, id, device.id);
+        return json(res, 200, { entities: store.listBlockEntities(id) });
       }
 
       m = p.match(/^\/api\/worlds\/([^/]+)\/chunks$/);

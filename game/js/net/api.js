@@ -73,6 +73,7 @@
     listWorlds() { return request('GET', '/worlds'); },
     createWorld(meta) { return request('POST', '/worlds', meta); },
     getWorld(id) { return request('GET', '/worlds/' + encodeURIComponent(id)); },
+    listBlockEntities(id) { return request('GET', `/worlds/${encodeURIComponent(id)}/block-entities`); },
     patchWorld(id, patch) { return request('PATCH', '/worlds/' + encodeURIComponent(id), patch); },
     deleteWorld(id) { return request('DELETE', '/worlds/' + encodeURIComponent(id)); },
     joinWorld(code) { return request('POST', '/worlds/join', { code }); },
