@@ -413,7 +413,7 @@ class Game {
     this.updateChunks(6);
     if (typeof MCRealtime !== 'undefined' && MCRealtime.active) {
       const p = this.player;
-      MCRealtime.sendPlayer(p.pos, p.yaw, p.pitch, (p.sneaking ? 1 : 0) | (p.flying ? 2 : 0));
+      MCRealtime.sendPlayer(p.pos, p.yaw, p.pitch, (p.sneaking ? 1 : 0) | (p.flying ? 2 : 0) | (p.swingT > 0 ? 4 : 0));
     }
     if (now - this.lastSave > 45000) { this.lastSave = now; this.saveWorld(true); }
     Sound.updateMusic(true);

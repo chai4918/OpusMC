@@ -13,6 +13,8 @@
       this.isRemotePlayer = true;
       this.deathTime = 0; this.fire = 0; this.hurtTime = 0; this.baby = false;
       this.inv = { held: null };
+      this.limbSwing = 0; this.limbAmt = 0;
+      this.lastUpdate = 0; this.swingUntil = 0;
     }
     ipos(a) {
       return [lerp(this.prev[0], this.pos[0], a), lerp(this.prev[1], this.pos[1], a), lerp(this.prev[2], this.pos[2], a)];
@@ -24,7 +26,14 @@
       const l = w.getLight(x, y, z);
       return [(l >> 4) / 15, (l & 15) / 15];
     }
-    pose() { return this.game.playerPose(0); }
+    pose() {
+      const now = performance.now();
+      if (now - this.lastUpdate > 260) this.limbAmt *= 0.88;
+      const swing = this.limbSwing * 0.6662, amt = this.limbAmt;
+      const l = Math.cos(swing) * 1.4 * amt, r = -l;
+      const sw = now < this.swingUntil ? Math.sin((this.swingUntil - now) / 300 * Math.PI) : 0;
+      return { head: { rx: this.pitch }, rarm: { rx: r * 0.7 - sw * 1.2 }, larm: { rx: l * 0.7 }, rleg: { rx: l }, lleg: { rx: r } };
+    }
   }
 
   const R = {
@@ -146,12 +155,27 @@
     upsert(p) {
       if (!p || p.id === this.selfId) return;
       let rp = this.remotes.get(p.id);
-      if (!rp) { rp = new RemotePlayer(this.game, p.id, p.name); this.remotes.set(p.id, rp); }
+      if (!rp) {
+        rp = new RemotePlayer(this.game, p.id, p.name);
+        rp.pos = [p.x, p.y, p.z]; rp.prev = [p.x, p.y, p.z];
+        rp.yaw = p.yaw; rp.prevYaw = p.yaw; rp.pitch = p.pitch;
+        rp.lastUpdate = performance.now();
+        this.remotes.set(p.id, rp);
+        return;
+      }
+      const now = performance.now();
+      const dt = Math.max(0.05, (now - (rp.lastUpdate || now)) / 1000);
+      const dist = Math.hypot(p.x - rp.pos[0], p.y - rp.pos[1], p.z - rp.pos[2]);
+      const speed = dist / dt;
+      rp.limbAmt = lerp(rp.limbAmt, speed > 0.6 ? 1 : 0, 0.35);
+      rp.limbSwing += dist * 1.6;
+      if (p.flags & 4) rp.swingUntil = now + 300;
       rp.prev = rp.pos.slice();
       rp.pos = [p.x, p.y, p.z];
       rp.prevYaw = rp.yaw;
       rp.yaw = p.yaw;
       rp.pitch = p.pitch;
+      rp.lastUpdate = now;
     },
 
     send(obj) {
