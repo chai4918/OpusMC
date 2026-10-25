@@ -29,7 +29,7 @@ class Game {
     this.tickCount = 0; this.worldTime = 1000; this.fps = 0;
     this.perspective = 0;
     this.weather = 0; this.rainTarget = 0; this.weatherTimer = 12000 + Math.random() * 24000;
-    this.breaking = null; this.useCd = 0; this.attackCd = 0; this.saving = false;
+    this.breaking = null; this.useCd = 0; this.attackCd = 0; this.saving = false; this.leaseLost = false;
     this.stats = { kills: 0, placed: 0, mined: 0 };
     this.adv = {};
     this.lastTap = {};
@@ -49,6 +49,14 @@ class Game {
     this.particles = new Particles(this);
     this.applySettings();
     await MCStore.init();
+    MCStore.onLeaseLost = () => {
+      if (this.leaseLost) return;
+      this.leaseLost = true;
+      this.ui.message('世界已被其他设备接管，你已退出', '#FF5555');
+      this.worldMeta = null;
+      if (this.ui.screen) this.ui.close();
+      this.startTitle();
+    };
     this.resize();
     window.addEventListener('resize', () => this.resize());
     bindInput(this);
@@ -133,17 +141,18 @@ class Game {
     }
     return [0, 80, 0];
   }
-  async createWorld(name, seedStr, mode, flat) {
+  async createWorld(name, seedStr, mode, flat, visibility) {
     let seed = parseInt(seedStr, 10);
     if (!seedStr) seed = (Math.random() * 2 ** 31) | 0;
     else if (isNaN(seed) || String(seed) !== seedStr.trim()) seed = hashStr(seedStr);
-    const meta = { name: name || '新的世界', seed, mode, flat: !!flat, created: Date.now(), lastPlayed: Date.now(), time: 1000, player: null };
+    const meta = { name: name || '新的世界', seed, mode, flat: !!flat, visibility: visibility === 'lan' ? 'lan' : 'private', created: Date.now(), lastPlayed: Date.now(), time: 1000, player: null };
     const saved = await MCStore.createWorld(meta);
     return this.loadWorld(saved.id);
   }
-  async loadWorld(id) {
-    const meta = await MCStore.getWorld(id);
-    if (!meta) return;
+  async loadWorld(id, opts = {}) {
+    const meta = await MCStore.enterWorld(id, opts);
+    if (!meta) { await MCStore.leaveWorld(); return; }
+    this.leaseLost = false;
     this.ui.open(new LoadingScreen(this, '正在载入世界…'));
     this.worldMeta = meta;
     this.setupWorld(meta.seed);
@@ -179,7 +188,7 @@ class Game {
     ['grass_block', 'stone', 'oak_planks', 'glass', 'oak_log', 'bricks', 'torch', 'tnt', 'water_bucket'].forEach((k, i) => inv.slots[i] = makeStack(k, k === 'water_bucket' ? 1 : 64));
   }
   async saveWorld(quiet) {
-    if (!this.worldMeta || this.state !== 'play') return;
+    if (!this.worldMeta || this.state !== 'play' || this.leaseLost) return;
     if (this.saving) return;
     this.saving = true;
     const w = this.world, p = this.player, list = [], cleared = [];
@@ -213,6 +222,15 @@ class Game {
       // keep the data for the next autosave instead of silently losing it
       for (const ch of cleared) ch.modified = true;
       for (const k of dirtyKeys) this.dirtySaved.add(k);
+      if (e && (e.code === 'LEASE_LOST' || e.code === 'LEASE_HELD')) {
+        this.leaseLost = true;
+        this.ui.message('世界已被其他设备接管，你已退出', '#FF5555');
+        this.worldMeta = null;
+        MCStore.leaveWorld();
+        this.ui.close();
+        this.startTitle();
+        return;
+      }
       const msg = e && e.code === 'CONFLICT_REVISION'
         ? '保存冲突：云端存档已被其他窗口更新，请退出世界后重新进入'
         : '保存失败: ' + (e && e.message || e);
@@ -224,6 +242,7 @@ class Game {
   }
   async quitToTitle() {
     await this.saveWorld(true);
+    await MCStore.leaveWorld();
     this.worldMeta = null;
     this.ui.cursor = null;
     this.startTitle();

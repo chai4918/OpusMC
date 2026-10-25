@@ -13,7 +13,19 @@ class TitleScreen extends MenuScreen {
       { x: cx - 100, y: y + 24, w: 200, h: 20, label: '游戏说明', onClick: () => this.game.ui.open(new HelpScreen(this.game, this)) },
       { x: cx - 100, y: y + 60, w: 98, h: 20, label: '选项…', onClick: () => this.game.ui.open(new OptionsScreen(this.game, this)) },
       { x: cx + 2, y: y + 60, w: 98, h: 20, label: '全屏', onClick: () => toggleFullscreen() },
+      { x: cx - 100, y: y + 84, w: 200, h: 20, label: () => '昵称: ' + MCStore.displayName(), onClick: () => this.rename() },
     ];
+  }
+  rename() {
+    if (!MCStore.online) { this.game.ui.message('本机模式不需要昵称', '#AAAAAA'); return; }
+    const u = this.game.ui, cx = u.w / 2;
+    u.showInput(cx - 100, u.h / 2, 200, 14, MCStore.displayName(), async (v) => {
+      const name = v.trim();
+      u.hideInput();
+      if (name.length < 2) { this.game.ui.message('昵称至少 2 个字符', '#FF5555'); return; }
+      try { await MCStore.renameDevice(name); this.game.ui.message('昵称已更新', '#55FF55'); this.layout(); }
+      catch (e) { this.game.ui.message('改名失败: ' + (e.code === 'NAME_TAKEN' ? '昵称已被占用' : e.message), '#FF5555'); }
+    }, { max: 16 });
   }
   drawExtra(ui) {
     const c = ui.ctx, w = ui.w;
@@ -56,16 +68,19 @@ class LoadingScreen extends MenuScreen {
 }
 
 class WorldListScreen extends MenuScreen {
-  constructor(game) { super(game, '选择世界 · ' + (MCStore.online ? '云存档' : '本机')); this.bgDirt = true; this.worlds = null; this.sel = -1; this.scroll = 0; MCStore.listWorlds().then(w => { this.worlds = w; this.layout(); }).catch(e => { this.worlds = []; this.error = e.message; this.layout(); }); }
+  constructor(game) { super(game, '选择世界 · ' + MCStore.displayName()); this.bgDirt = true; this.worlds = null; this.sel = -1; this.scroll = 0; MCStore.listWorlds().then(w => { this.worlds = w; this.layout(); }).catch(e => { this.worlds = []; this.error = e.message; this.layout(); }); }
   layout() {
     const u = this.game.ui, cx = u.w / 2, by = u.h - 78;
-    const has = this.sel >= 0 && this.worlds && this.worlds[this.sel];
+    const w = this.sel >= 0 && this.worlds && this.worlds[this.sel];
+    const has = !!w;
+    const owner = has && w.role === 'owner';
     this.widgets = [
-      { x: cx - 154, y: by, w: 150, h: 20, label: '进入选中的世界', enabled: !!has, onClick: () => this.play() },
+      { x: cx - 154, y: by, w: 150, h: 20, label: '进入选中的世界', enabled: has, onClick: () => this.play() },
       { x: cx + 4, y: by, w: 150, h: 20, label: '创建新的世界', onClick: () => this.game.ui.open(new CreateWorldScreen(this.game, this)) },
-      { x: cx - 154, y: by + 24, w: 72, h: 20, label: '删除', enabled: !!has, onClick: () => this.del() },
-      { x: cx - 78, y: by + 24, w: 72, h: 20, label: '重命名', enabled: !!has, onClick: () => this.rename() },
-      { x: cx + 4, y: by + 24, w: 150, h: 20, label: '取消', onClick: () => this.game.ui.open(new TitleScreen(this.game)) },
+      { x: cx - 154, y: by + 24, w: 72, h: 20, label: '删除', enabled: owner, onClick: () => this.del() },
+      { x: cx - 78, y: by + 24, w: 72, h: 20, label: '重命名', enabled: owner, onClick: () => this.rename() },
+      { x: cx - 2, y: by + 24, w: 72, h: 20, label: '加入码', onClick: () => this.joinByCode() },
+      { x: cx + 74, y: by + 24, w: 72, h: 20, label: '成员', enabled: owner, onClick: () => this.game.ui.open(new MembersScreen(this.game, w, this)) },
       ...(MCStore.online
         ? [
           { x: cx - 154, y: by + 48, w: 150, h: 20, label: '导入本机存档', onClick: () => this.importLocal() },
@@ -77,7 +92,23 @@ class WorldListScreen extends MenuScreen {
     ];
     this.listY = 36; this.listH = by - 8 - 36; this.titleY = 16;
   }
-  play() { const w = this.worlds[this.sel]; if (w) this.game.loadWorld(w.id); }
+  async play() {
+    const w = this.worlds[this.sel];
+    if (!w) return;
+    try {
+      if (w.role === 'lan' || (w.visibility === 'lan' && !w.member)) {
+        await MCStore.joinLan(w.id);
+        w.role = 'member';
+      }
+      await this.game.loadWorld(w.id);
+    } catch (e) {
+      if (e.code === 'LEASE_HELD') {
+        this.game.ui.open(new LeaseScreen(this.game, w, e.holderName || '其他设备', this));
+        return;
+      }
+      this.game.ui.message('进入失败: ' + (e.message || e), '#FF5555');
+    }
+  }
   async importLocal() {
     this.game.ui.message('正在导入本机存档…', '#FFFF55');
     try {
@@ -90,16 +121,46 @@ class WorldListScreen extends MenuScreen {
       this.game.ui.message('导入失败: ' + e.message, '#FF5555');
     }
   }
+  joinByCode() {
+    const u = this.game.ui, cx = u.w / 2;
+    u.showInput(cx - 100, this.listY + 4, 200, 14, '', async (raw) => {
+      const code = raw.trim().toUpperCase();
+      u.hideInput();
+      if (!code) return;
+      try {
+        await MCStore.joinWorld(code);
+        this.worlds = await MCStore.listWorlds();
+        this.sel = -1;
+        this.layout();
+        this.game.ui.message('已加入世界', '#55FF55');
+      } catch (e) {
+        this.game.ui.message('加入失败: ' + (e.code === 'INVALID_JOIN_CODE' ? '加入码无效' : e.message), '#FF5555');
+      }
+    }, { max: 6 });
+  }
+  async toggleVisibility() {
+    const w = this.worlds[this.sel];
+    if (!w || w.role !== 'owner') return;
+    const next = w.visibility === 'lan' ? 'private' : 'lan';
+    try {
+      await MCStore.patchWorld(w.id, { visibility: next });
+      w.visibility = next;
+      this.layout();
+    } catch (e) {
+      this.game.ui.message('修改失败: ' + e.message, '#FF5555');
+    }
+  }
   async del() {
     const w = this.worlds[this.sel]; if (!w) return;
+    if (w.role !== 'owner') return;
     if (this.confirmDel !== w.id) { this.confirmDel = w.id; this.game.ui.message(`再次点击“删除”以确认删除 “${w.name}”`, '#FF5555'); this.widgets[2].label = '确认删除？'; return; }
     await MCStore.deleteWorld(w.id); this.confirmDel = null; this.sel = -1;
     this.worlds = await MCStore.listWorlds(); this.layout();
   }
   rename() {
-    const w = this.worlds[this.sel]; if (!w) return;
+    const w = this.worlds[this.sel]; if (!w || w.role !== 'owner') return;
     const u = this.game.ui, cx = u.w / 2;
-    u.showInput(cx - 100, this.listY + 4 + (this.sel - this.scroll) * 36, 200, 14, w.name, async (v) => { w.name = v.trim() || w.name; await MCStore.renameWorld(w.id, w.name); u.hideInput(); });
+    u.showInput(cx - 100, this.listY + 4 + (this.sel - this.scroll) * 36, 200, 14, w.name, async (v) => { w.name = v.trim() || w.name; await MCStore.renameWorld(w.id, w.name); u.hideInput(); this.layout(); });
   }
   drawExtra(ui) {
     const c = ui.ctx, cx = ui.w / 2;
@@ -107,7 +168,7 @@ class WorldListScreen extends MenuScreen {
     if (!MCStore.online && DB.backend === 'memory') Font.center(c, '注意：当前浏览器禁止本地存储，存档在关闭页面后会丢失', cx, this.listY + this.listH + 2 - 12, '#FF5555');
     if (this.error) Font.center(c, '加载失败: ' + this.error, cx, this.listY + 20, '#FF5555');
     if (!this.worlds) { Font.center(c, '载入中…', cx, this.listY + 20, '#AAAAAA'); return; }
-    if (!this.worlds.length) Font.center(c, MCStore.online ? '服务器上还没有世界，点击“创建新的世界”或“导入本机存档”' : '还没有世界，点击“创建新的世界”开始吧！', cx, this.listY + 20, '#AAAAAA');
+    if (!this.worlds.length) Font.center(c, MCStore.online ? '还没有世界：创建新世界，或输入加入码' : '还没有世界，点击“创建新的世界”开始吧！', cx, this.listY + 20, '#AAAAAA');
     const vis = Math.floor(this.listH / 36);
     this.worlds.slice(this.scroll, this.scroll + vis).forEach((w, i) => {
       const y = this.listY + 4 + i * 36, x = cx - 110, idx = i + this.scroll;
@@ -116,6 +177,10 @@ class WorldListScreen extends MenuScreen {
       Font.draw(c, w.name, x + 28, y + 1, '#FFFFFF');
       Font.draw(c, new Date(w.lastPlayed).toLocaleString('zh-CN'), x + 28, y + 11, '#808080');
       Font.draw(c, (w.mode === 'creative' ? '创造模式' : '生存模式') + (w.flat ? '  超平坦' : '  种子: ' + w.seed), x + 28, y + 21, '#808080');
+      const role = w.role === 'owner' ? (w.joinCode ? '加入码 ' + w.joinCode : '房主') : w.role === 'member' ? '已加入' : '局域网';
+      const rc = w.role === 'owner' ? '#FFFF55' : w.role === 'member' ? '#55FF55' : '#55FFFF';
+      const roleText = role + (w.role === 'owner' ? (w.visibility === 'lan' ? ' · 局域网' : ' · 私有') : '');
+      Font.draw(c, roleText, x + 222 - Font.width(roleText), y + 11, rc);
     });
   }
   mouseDown(ui, mx, my, b) {
@@ -134,8 +199,91 @@ class WorldListScreen extends MenuScreen {
   onEsc() { this.game.ui.open(new TitleScreen(this.game)); }
 }
 
+class LeaseScreen extends MenuScreen {
+  constructor(game, world, holderName, parent) {
+    super(game, '世界正在使用中');
+    this.bgDim = 0.75; this.pauses = true; this.world = world; this.holderName = holderName; this.parent = parent;
+  }
+  layout() {
+    const u = this.game.ui, cx = u.w / 2, y = u.h / 2;
+    this.widgets = [
+      { x: cx - 102, y, w: 204, h: 20, label: '接管并进入', onClick: () => this.takeover() },
+      { x: cx - 102, y: y + 24, w: 204, h: 20, label: '取消', onClick: () => this.game.ui.open(this.parent) },
+    ];
+  }
+  drawExtra(ui) {
+    const c = ui.ctx;
+    Font.center(c, `“${this.world.name}” 正在 ${this.holderName} 的设备上运行`, ui.w / 2, ui.h / 2 - 28, '#FFFFFF');
+    Font.center(c, '接管后对方会立即退出，且不会再写入该世界', ui.w / 2, ui.h / 2 - 16, '#FFAA55');
+  }
+  async takeover() {
+    try {
+      await this.game.loadWorld(this.world.id, { takeover: true });
+    } catch (e) {
+      this.game.ui.message('接管失败: ' + (e.message || e), '#FF5555');
+    }
+  }
+  onEsc() { this.game.ui.open(this.parent); }
+}
+
+class MembersScreen extends MenuScreen {
+  constructor(game, world, parent) {
+    super(game, '世界成员');
+    this.bgDim = 0.8; this.pauses = true; this.world = world; this.parent = parent;
+    this.fresh = null; this.titleY = 12;
+    this.load();
+  }
+  async load() {
+    try { this.fresh = await MCStore.getWorld(this.world.id); } catch (e) { this.error = e.message; }
+    this.layout();
+  }
+  layout() {
+    const u = this.game.ui, cx = u.w / 2, w = this.fresh || this.world;
+    const members = w.members || [];
+    this.widgets = [];
+    let y = 58;
+    for (const m of members.slice(0, 8)) {
+      const isSelf = MCStore.device && m.device_id === MCStore.device.id;
+      this.widgets.push({ x: cx - 154, y, w: 150, h: 18, label: m.name + (m.permission === 'owner' ? '（房主）' : ''), enabled: false });
+      if (!isSelf) this.widgets.push({ x: cx + 4, y, w: 150, h: 18, label: '踢出 ' + m.name, onClick: () => this.kick(m.device_id) });
+      y += 22;
+    }
+    this.widgets.push({
+      x: cx - 154, y: y + 6, w: 150, h: 20,
+      label: () => '可见性: ' + (w.visibility === 'lan' ? '局域网可见' : '私有'),
+      onClick: () => this.toggle(w),
+    });
+    this.widgets.push({ x: cx + 4, y: y + 6, w: 150, h: 20, label: '关闭', onClick: () => this.game.ui.open(this.parent) });
+  }
+  drawExtra(ui) {
+    const c = ui.ctx, w = this.fresh || this.world;
+    Font.center(c, '加入码: ' + (w.joinCode || '—'), ui.w / 2, 34, '#FFFF55');
+    if (this.error) Font.center(c, '加载失败: ' + this.error, ui.w / 2, ui.h - 30, '#FF5555');
+  }
+  async kick(deviceId) {
+    try {
+      await MCStore.kickMember(this.world.id, deviceId);
+      await this.load();
+      this.game.ui.message('已踢出该设备', '#55FF55');
+    } catch (e) {
+      this.game.ui.message('踢出失败: ' + (e.message || e), '#FF5555');
+    }
+  }
+  async toggle(w) {
+    const next = w.visibility === 'lan' ? 'private' : 'lan';
+    try {
+      await MCStore.patchWorld(this.world.id, { visibility: next });
+      this.world.visibility = next;
+      await this.load();
+    } catch (e) {
+      this.game.ui.message('修改失败: ' + e.message, '#FF5555');
+    }
+  }
+  onEsc() { this.game.ui.open(this.parent); }
+}
+
 class CreateWorldScreen extends MenuScreen {
-  constructor(game, parent) { super(game, '创建新的世界'); this.bgDirt = true; this.parent = parent; this.name = '新的世界'; this.seed = ''; this.mode = 'survival'; this.flat = false; this.field = 0; }
+  constructor(game, parent) { super(game, '创建新的世界'); this.bgDirt = true; this.parent = parent; this.name = '新的世界'; this.seed = ''; this.mode = 'survival'; this.flat = false; this.visibility = 'private'; this.field = 0; }
   layout() {
     const u = this.game.ui, cx = u.w / 2;
     this.fields = [{ x: cx - 100, y: 60, w: 200, h: 20 }, { x: cx - 100, y: 104, w: 200, h: 20 }];
@@ -144,6 +292,8 @@ class CreateWorldScreen extends MenuScreen {
         tip: ['生存：收集资源、合成、对抗怪物', '创造：无限方块、飞行、无敌'] },
       { x: cx - 100, y: 160, w: 200, h: 20, label: () => '世界类型: ' + (this.flat ? '超平坦' : '默认'), onClick: () => { this.flat = !this.flat; },
         tip: ['默认：山地、森林、海洋、洞穴与矿石', '超平坦：一望无际的草地，适合建筑'] },
+      { x: cx - 100, y: 184, w: 200, h: 20, label: () => '可见性: ' + (this.visibility === 'lan' ? '局域网可见' : '私有'), onClick: () => { this.visibility = this.visibility === 'lan' ? 'private' : 'lan'; },
+        tip: ['私有：只有加入码可以进入', '局域网：局域网内设备可在列表看到并加入'] },
       { x: cx - 154, y: u.h - 28, w: 150, h: 20, label: '创建新的世界', onClick: () => this.create() },
       { x: cx + 4, y: u.h - 28, w: 150, h: 20, label: '取消', onClick: () => this.game.ui.open(this.parent) },
     ];
@@ -154,7 +304,11 @@ class CreateWorldScreen extends MenuScreen {
     const f = this.fields[i], u = this.game.ui;
     u.showInput(f.x + 4, f.y + 2, f.w - 8, f.h - 4, i === 0 ? this.name : this.seed, () => this.create(), { onInput: (v) => { if (this.field === 0) this.name = v; else this.seed = v; }, onEsc: () => u.open(this.parent), max: 32 });
   }
-  create() { this.game.ui.hideInput(); this.game.createWorld(this.name.trim() || '新的世界', this.seed.trim(), this.mode, this.flat); }
+  create() {
+    this.game.ui.hideInput();
+    this.game.createWorld(this.name.trim() || '新的世界', this.seed.trim(), this.mode, this.flat, this.visibility)
+      .catch(e => this.game.ui.message('创建失败: ' + (e.message || e), '#FF5555'));
+  }
   drawExtra(ui) {
     const c = ui.ctx;
     Font.draw(c, '世界名称', this.fields[0].x, this.fields[0].y - 11, '#A0A0A0');
