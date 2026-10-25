@@ -153,7 +153,7 @@
     },
 
     upsert(p) {
-      if (!p || p.id === this.selfId) return;
+      if (!p || p.id === this.selfId || p.id === (MCStore.device && MCStore.device.id)) return;
       let rp = this.remotes.get(p.id);
       if (!rp) {
         rp = new RemotePlayer(this.game, p.id, p.name);

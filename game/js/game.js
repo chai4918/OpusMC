@@ -1590,7 +1590,7 @@ class Game {
     if (e.type === 'creeper' && e.fuse >= 0) { const f = lerp(e.prevFuse, e.fuse, a) / 28; const s = 1 + Math.sin(f * 100) * f * 0.01; sc *= (1 + f * 0.4) * s; }
     if (e.baby) sc *= 0.5;
     M4.scale(m, sc, sc, sc);
-    const poses = isPlayer ? this.playerPose(a) : e.pose(a);
+    const poses = (isPlayer && !e.isRemotePlayer) ? this.playerPose(a) : e.pose(a);
     let overlay = e.hurtTime > 0 || e.deathTime > 0 ? [1, 0, 0, 0.4] : null;
     if (e.type === 'creeper' && e.fuse >= 0 && (e.fuse / 4 | 0) % 2 === 0) overlay = [1, 1, 1, 0.5];
     const lt = [l[0], l[1]];
