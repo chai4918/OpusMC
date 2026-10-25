@@ -153,6 +153,9 @@
       this.send({ t: 'block', cx: x >> 4, cz: z >> 4, x: x & 15, y, z: z & 15, id, meta });
     },
 
+    // used for metadata-only changes (doors, trapdoors, note blocks)
+    sendBlockMeta(x, y, z, id, meta) { this.sendBlock(x, y, z, id, meta); },
+
     sendChat(text) {
       if (!this.active) return;
       this.send({ t: 'chat', text });

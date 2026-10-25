@@ -1188,15 +1188,16 @@ class Game {
         if (w.getMeta(x, y, z) & 8) { this.fillLoot(be, x, y, z); w.setMeta(x, y, z, w.getMeta(x, y, z) & 7); }
         this.ui.open(new ChestScreen(this, be)); Sound.door([x, y, z], true); return;
       }
-      if (b.onUse === 'note') { const m = (w.getMeta(x, y, z) + 1) % 25; w.setMeta(x, y, z, m); Sound.note([x, y, z], m); this.particles.spawn('note', x + 0.5, y + 1.2, z + 0.5, 0, 0.02, 0, { col: [255, Math.round(m * 10), Math.round(255 - m * 10)] }); p.swingT = 6; return; }
+      if (b.onUse === 'note') { const m = (w.getMeta(x, y, z) + 1) % 25; w.setMeta(x, y, z, m); if (typeof MCRealtime !== 'undefined' && MCRealtime.active) MCRealtime.sendBlockMeta(x, y, z, t.id, m); Sound.note([x, y, z], m); this.particles.spawn('note', x + 0.5, y + 1.2, z + 0.5, 0, 0.02, 0, { col: [255, Math.round(m * 10), Math.round(255 - m * 10)] }); p.swingT = 6; return; }
       if (b.door) {
         const m = w.getMeta(x, y, z), base = (m & 8) ? y - 1 : y;
         const bm = w.getMeta(x, base, z) ^ 4;
         w.setMeta(x, base, z, bm); w.setMeta(x, base + 1, z, bm | 8);
+        if (typeof MCRealtime !== 'undefined' && MCRealtime.active) { MCRealtime.sendBlockMeta(x, base, z, t.id, bm); MCRealtime.sendBlockMeta(x, base + 1, z, t.id, bm | 8); }
         Sound.door([x, y, z], !!(bm & 4)); p.swingT = 6; this.flushMesh(); return;
       }
       if (b.bed) { this.trySleep(x, y, z); p.swingT = 6; return; }
-      if (b.trapdoor) { w.setMeta(x, y, z, w.getMeta(x, y, z) ^ 4); Sound.door([x, y, z], true); p.swingT = 6; this.flushMesh(); return; }
+      if (b.trapdoor) { const nm = w.getMeta(x, y, z) ^ 4; w.setMeta(x, y, z, nm); if (typeof MCRealtime !== 'undefined' && MCRealtime.active) MCRealtime.sendBlockMeta(x, y, z, t.id, nm); Sound.door([x, y, z], true); p.swingT = 6; this.flushMesh(); return; }
       if (t.id === 26 && def && def.key === 'flint_and_steel') { w.setBlock(x, y, z, 0, 0); this.entities.push(new PrimedTNT(this, x, y, z)); this.damageHeld(1); p.swingT = 6; return; }
     }
     if (!held) return;
